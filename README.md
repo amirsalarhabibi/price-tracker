@@ -1,5 +1,7 @@
 # Price Tracker
 
+![CI](https://github.com/amirsalarhabibi/price-tracker/actions/workflows/ci.yml/badge.svg)
+
 A small FastAPI service that records USD and gold prices and exposes their history.
 Built as a DevOps portfolio project: Docker, GitHub Actions CI, and (coming next) monitoring.
 
