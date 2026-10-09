@@ -1,8 +1,15 @@
-import random
+from app.sources import FakeSource, collect
 
-BASE = {"usd": 60000, "gold": 3000000}  # fake numbers
+SUPPORTED = ("usd", "gold")
 
-def fetch_price(asset: str) -> int:
-    if asset not in BASE:
+# Real sources will be added here once we test which ones respond.
+SOURCES = [FakeSource()]
+
+
+def fetch_price(asset: str) -> dict:
+    if asset not in SUPPORTED:
         raise ValueError(f"unknown asset: {asset}")
-    return round(BASE[asset] * random.uniform(0.98, 1.02))
+    result = collect(asset, SOURCES)
+    if result is None:
+        raise RuntimeError("no source available")
+    return result

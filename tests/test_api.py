@@ -17,3 +17,12 @@ def test_refresh_and_history():
 def test_unknown_asset():
     with TestClient(app) as client:
         assert client.post("/prices/xyz/refresh").status_code == 404
+
+
+def test_latest_has_age_and_confidence():
+    with TestClient(app) as client:
+        client.post("/prices/usd/refresh")
+        data = client.get("/prices/usd/latest").json()
+        assert "age_seconds" in data
+        assert data["stale"] is False
+        assert data["confidence"] in ("low", "medium", "high")
