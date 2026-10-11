@@ -42,3 +42,7 @@ python -m pytest
 - A background task polls every 60 seconds (`POLL_INTERVAL`) and stores each result with its confidence.
 - `GET /prices/{asset}/latest` returns the age of the data and a `stale` flag, so old data is never presented as fresh.
 - The USD price is the USDT price on an Iranian exchange, used as a proxy. 18k gold per gram is an *estimate* derived from the world ounce price and the USD price, and is marked `estimated: true`.
+
+## Outage behavior
+
+`scripts/outage_test.sh` blocks the container's outgoing traffic for about two minutes (needs sudo, uses the iptables `DOCKER-USER` chain). While blocked, the API keeps serving the last stored price together with its `age_seconds`. After the block is removed, polling resumes on its own (about 20 seconds in the last run).
