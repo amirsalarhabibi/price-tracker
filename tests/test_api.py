@@ -43,3 +43,10 @@ def test_history_estimated_is_bool():
         client.post("/prices/gold/refresh")
         rows = client.get("/prices/gold/history").json()
         assert isinstance(rows[0]["estimated"], bool)
+
+
+def test_history_estimated_is_bool():
+    with TestClient(app) as client:
+        client.post("/prices/gold/refresh")
+        rows = client.get("/prices/gold/history").json()
+        assert isinstance(rows[0]["estimated"], bool)
