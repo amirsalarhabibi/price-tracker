@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # usage: ./scripts/probe.sh URL [URL...]
 for u in "$@"; do
-  res=$(curl -s -o /tmp/probe.out -w "%{http_code} %{time_total}s" --max-time 8 -A "Mozilla/5.0" "$u")
-  echo "== $u -> $res"
-  head -c 300 /tmp/probe.out
+  out=$(mktemp)
+  res=$(curl -s -o "$out" -w "%{http_code} %{time_total}s" --max-time 8 -A "Mozilla/5.0" "$u")
+  rc=$?
+  echo "== $u -> $res (curl exit=$rc)"
+  [ -s "$out" ] && head -c 300 "$out"
   echo
+  rm -f "$out"
 done
