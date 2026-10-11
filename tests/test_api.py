@@ -1,6 +1,7 @@
 import os
 os.environ["DB_PATH"] = "/tmp/test_prices.db"
 os.environ["USE_FAKE_SOURCES"] = "1"
+os.environ["DISABLE_POLLER"] = "1"
 
 from fastapi.testclient import TestClient
 from app.main import app
@@ -27,3 +28,11 @@ def test_latest_has_age_and_confidence():
         assert "age_seconds" in data
         assert data["stale"] is False
         assert data["confidence"] in ("low", "medium", "high")
+
+
+def test_latest_has_new_fields():
+    with TestClient(app) as client:
+        client.post("/prices/gold/refresh")
+        data = client.get("/prices/gold/latest").json()
+        assert "groups_ok" in data
+        assert data["estimated"] is False  # fake source is not an estimate

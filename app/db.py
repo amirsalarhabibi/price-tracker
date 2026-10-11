@@ -3,6 +3,13 @@ import sqlite3
 
 DB_PATH = os.getenv("DB_PATH", "data/prices.db")
 
+NEW_COLUMNS = (
+    ("sources_ok", "INTEGER NOT NULL DEFAULT 1"),
+    ("confidence", "TEXT NOT NULL DEFAULT 'low'"),
+    ("groups_ok", "INTEGER NOT NULL DEFAULT 1"),
+    ("estimated", "INTEGER NOT NULL DEFAULT 0"),
+)
+
 
 def get_conn():
     os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
@@ -22,7 +29,6 @@ def init_db():
             )
         """)
         cols = {r["name"] for r in c.execute("PRAGMA table_info(prices)")}
-        if "sources_ok" not in cols:
-            c.execute("ALTER TABLE prices ADD COLUMN sources_ok INTEGER NOT NULL DEFAULT 1")
-        if "confidence" not in cols:
-            c.execute("ALTER TABLE prices ADD COLUMN confidence TEXT NOT NULL DEFAULT 'low'")
+        for name, ddl in NEW_COLUMNS:
+            if name not in cols:
+                c.execute(f"ALTER TABLE prices ADD COLUMN {name} {ddl}")
