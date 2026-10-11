@@ -1,5 +1,6 @@
 import os
 os.environ["DB_PATH"] = "/tmp/test_prices.db"
+os.environ["USE_FAKE_SOURCES"] = "1"
 
 from fastapi.testclient import TestClient
 from app.main import app

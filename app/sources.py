@@ -10,6 +10,10 @@ TIMEOUT = float(os.getenv("SOURCE_TIMEOUT", "5"))
 
 class Source:
     name = "base"
+    group = None  # sources fed by the same upstream share a group
+
+    def group_id(self) -> str:
+        return self.group or self.name
 
     def fetch(self, asset: str) -> float:
         """Return the price or raise an exception."""
@@ -18,26 +22,28 @@ class Source:
 
 class FakeSource(Source):
     name = "fake"
-    BASE = {"usd": 60000, "gold": 3000000}  # fake numbers
+    BASE = {"usd": 60000, "gold": 3000000, "xau": 4000}  # fake numbers
 
     def fetch(self, asset: str) -> float:
         return self.BASE[asset] * random.uniform(0.98, 1.02)
 
 
 class HttpJsonSource(Source):
-    """Generic source: GET a URL, dig a number out of the JSON.
+    """GET a URL, dig a number out of the JSON.
 
     config = {"usd": ("https://example.com/api", ["data", "price"])}
     """
 
-    def __init__(self, name: str, config: dict, scale: float = 1.0):
+    def __init__(self, name, config, scale=1.0, group=None, user_agent="Mozilla/5.0"):
         self.name = name
         self.config = config
         self.scale = scale
+        self.group = group
+        self.user_agent = user_agent
 
     def fetch(self, asset: str) -> float:
         url, path = self.config[asset]
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": self.user_agent})
         with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
             data = json.load(resp)
         for key in path:
@@ -45,16 +51,20 @@ class HttpJsonSource(Source):
         return float(str(data).replace(",", "")) * self.scale
 
 
-def confidence_for(ok: int) -> str:
-    if ok >= 3:
+def confidence_for(groups_ok: int) -> str:
+    if groups_ok >= 3:
         return "high"
-    if ok == 2:
+    if groups_ok == 2:
         return "medium"
     return "low"
 
 
 def collect(asset: str, sources: list):
-    """Ask every source in parallel; return the median or None if all fail."""
+    """Ask every source in parallel.
+
+    Median inside each group first, then median across groups, so several
+    sources sharing one upstream count as one vote.
+    """
 
     def one(source):
         try:
@@ -66,14 +76,21 @@ def collect(asset: str, sources: list):
         return None
     with ThreadPoolExecutor(max_workers=len(sources)) as pool:
         results = list(pool.map(one, sources))
-    prices = [p for p in results if p is not None]
-    if not prices:
+
+    by_group = {}
+    for source, price in zip(sources, results):
+        if price is not None:
+            by_group.setdefault(source.group_id(), []).append(price)
+    if not by_group:
         return None
+
+    group_prices = [statistics.median(v) for v in by_group.values()]
     return {
-        "price": round(statistics.median(prices)),
-        "sources_ok": len(prices),
+        "price": round(statistics.median(group_prices), 2),
+        "sources_ok": sum(len(v) for v in by_group.values()),
         "sources_total": len(sources),
-        "confidence": confidence_for(len(prices)),
+        "groups_ok": len(by_group),
+        "confidence": confidence_for(len(by_group)),
     }
 
 

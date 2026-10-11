@@ -42,3 +42,16 @@ def test_all_fail_returns_none():
 
 def test_gold18_formula():
     assert round(gold18_gram(31.1035, 100000)) == 75000
+
+
+class Grp(Ok):
+    def __init__(self, name, price, group):
+        super().__init__(name, price)
+        self.group = group
+
+
+def test_same_group_counts_once():
+    r = collect("usd", [Grp("a", 100, "x"), Grp("b", 100, "x")])
+    assert r["sources_ok"] == 2
+    assert r["groups_ok"] == 1
+    assert r["confidence"] == "low"
