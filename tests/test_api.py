@@ -36,3 +36,10 @@ def test_latest_has_new_fields():
         data = client.get("/prices/gold/latest").json()
         assert "groups_ok" in data
         assert data["estimated"] is False  # fake source is not an estimate
+
+
+def test_history_estimated_is_bool():
+    with TestClient(app) as client:
+        client.post("/prices/gold/refresh")
+        rows = client.get("/prices/gold/history").json()
+        assert isinstance(rows[0]["estimated"], bool)

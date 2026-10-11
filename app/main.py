@@ -93,4 +93,4 @@ def history(asset: str, limit: int = 50):
             "FROM prices WHERE asset=? ORDER BY id DESC LIMIT ?",
             (asset, limit),
         ).fetchall()
-    return [dict(r) for r in rows]
+    return [{**dict(r), "estimated": bool(r["estimated"])} for r in rows]
