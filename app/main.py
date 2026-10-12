@@ -1,11 +1,13 @@
 import asyncio
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
-from app import db, fetcher
+from app import db, fetcher, metrics, sources
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("price-tracker")
@@ -94,3 +96,18 @@ def history(asset: str, limit: int = 50):
             (asset, limit),
         ).fetchall()
     return [{**dict(r), "estimated": bool(r["estimated"])} for r in rows]
+
+
+@app.get("/sources")
+def sources_status():
+    now = time.time()
+    out = {}
+    for name, s in sources.snapshot().items():
+        ts = s["last_success_ts"]
+        out[name] = {**s, "last_success_age_seconds": None if ts is None else int(now - ts)}
+    return out
+
+
+@app.get("/metrics")
+def metrics_endpoint():
+    return Response(generate_latest(metrics.REGISTRY), media_type=CONTENT_TYPE_LATEST)

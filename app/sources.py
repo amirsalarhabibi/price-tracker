@@ -1,11 +1,85 @@
 import json
 import os
 import random
+import socket
+import ssl
 import statistics
+import threading
+import time
+import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 TIMEOUT = float(os.getenv("SOURCE_TIMEOUT", "5"))
+
+_lock = threading.Lock()
+_stats = {}
+
+
+def classify_error(exc: Exception) -> str:
+    """Name the kind of failure, so a blocked source can be told apart from a broken one."""
+    if isinstance(exc, urllib.error.HTTPError):
+        return "http_error"
+    if isinstance(exc, urllib.error.URLError):
+        reason = exc.reason
+        if isinstance(reason, socket.gaierror):
+            return "dns"
+        if isinstance(reason, TimeoutError):
+            return "timeout"
+        if isinstance(reason, ssl.SSLError):
+            return "tls"
+        return "connection"
+    if isinstance(exc, TimeoutError):
+        return "timeout"
+    if isinstance(exc, ssl.SSLError):
+        return "tls"
+    if isinstance(exc, (ValueError, KeyError, TypeError, IndexError)):
+        return "bad_response"
+    if isinstance(exc, OSError):
+        return "connection"
+    return "other"
+
+
+def _entry(source):
+    return _stats.setdefault(
+        source.name,
+        {
+            "group": source.group_id(),
+            "attempts": 0,
+            "failures": {},
+            "up": None,
+            "last_success_ts": None,
+            "last_error": None,
+        },
+    )
+
+
+def record_success(source):
+    with _lock:
+        e = _entry(source)
+        e["attempts"] += 1
+        e["up"] = True
+        e["last_success_ts"] = time.time()
+
+
+def record_failure(source, exc: Exception):
+    kind = classify_error(exc)
+    with _lock:
+        e = _entry(source)
+        e["attempts"] += 1
+        e["up"] = False
+        e["last_error"] = kind
+        e["failures"][kind] = e["failures"].get(kind, 0) + 1
+
+
+def snapshot() -> dict:
+    with _lock:
+        return {n: {**e, "failures": dict(e["failures"])} for n, e in _stats.items()}
+
+
+def reset_stats():
+    with _lock:
+        _stats.clear()
 
 
 class Source:
@@ -68,9 +142,12 @@ def collect(asset: str, sources: list):
 
     def one(source):
         try:
-            return float(source.fetch(asset))
-        except Exception:
+            price = float(source.fetch(asset))
+        except Exception as exc:
+            record_failure(source, exc)
             return None
+        record_success(source)
+        return price
 
     if not sources:
         return None

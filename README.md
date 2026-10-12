@@ -46,3 +46,10 @@ python -m pytest
 ## Outage behavior
 
 `scripts/outage_test.sh` blocks the container's outgoing traffic for about two minutes (needs sudo, uses the iptables `DOCKER-USER` chain). While blocked, the API keeps serving the last stored price together with its `age_seconds`. After the block is removed, polling resumes on its own (about 20 seconds in the last run).
+
+## Monitoring
+
+- `GET /metrics` exposes Prometheus metrics: `price_tracker_price`, `price_tracker_price_age_seconds`, `price_tracker_groups_ok`, `price_tracker_source_up`, `price_tracker_source_last_success_timestamp_seconds`, `price_tracker_source_requests_total` and `price_tracker_source_failures_total{error=...}`.
+- `GET /sources` returns the same per-source status as JSON.
+- Every failure is classified (`dns`, `timeout`, `tls`, `http_error`, `connection`, `bad_response`, `other`), which makes it possible to tell a blocked source apart from one that changed its response format.
+- Source counters live in memory and reset when the service restarts.
