@@ -1,0 +1,24 @@
+groups:
+  - name: price-tracker
+    rules:
+      - alert: TrackerDown
+        expr: up{job="price-tracker"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "The price tracker API cannot be scraped"
+      - alert: PriceStale
+        expr: price_tracker_price_age_seconds > 900
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The {{ $labels.asset }} price is older than 15 minutes"
+      - alert: SourceDown
+        expr: price_tracker_source_up == 0
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Source {{ $labels.source }} has been failing for 3 minutes"

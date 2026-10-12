@@ -53,3 +53,12 @@ python -m pytest
 - `GET /sources` returns the same per-source status as JSON.
 - Every failure is classified (`dns`, `timeout`, `tls`, `http_error`, `connection`, `bad_response`, `other`), which makes it possible to tell a blocked source apart from one that changed its response format.
 - Source counters live in memory and reset when the service restarts.
+
+## Monitoring stack
+
+`docker compose up --build` also starts Prometheus and Grafana (bound to localhost only).
+
+- Grafana: http://localhost:3000 (user `admin`, password `admin` unless `GRAFANA_PASSWORD` is set). The "Price Tracker" dashboard is provisioned automatically.
+- Prometheus: http://localhost:9090 (targets at `/targets`, alert rules at `/alerts`).
+- Alert rules: `TrackerDown` (API cannot be scraped), `PriceStale` (price older than 15 minutes), `SourceDown` (a source failing for 3 minutes).
+- A test checks that the dashboard and the alert rules only use metrics the app really exports.
