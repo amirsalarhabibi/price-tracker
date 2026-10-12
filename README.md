@@ -62,3 +62,10 @@ python -m pytest
 - Prometheus: http://localhost:9090 (targets at `/targets`, alert rules at `/alerts`).
 - Alert rules: `TrackerDown` (API cannot be scraped), `PriceStale` (price older than 15 minutes), `SourceDown` (a source failing for 3 minutes).
 - A test checks that the dashboard and the alert rules only use metrics the app really exports.
+
+## Container and API hardening
+
+- The container runs as a non-root user and has a `HEALTHCHECK` (`docker compose ps` shows `healthy`).
+- Direct dependencies are pinned in `requirements.txt`, and Dependabot proposes weekly updates for pip, Docker and GitHub Actions.
+- `POST /prices/{asset}/refresh` returns the stored price (`"cached": true`) when it is younger than `REFRESH_MIN_INTERVAL` seconds (default 10), so repeated calls cannot exhaust the upstream rate limits. It is a cache, not authentication.
+- The USD price is reused for 20 seconds, so the gold estimate does not query the USD source a second time.

@@ -14,6 +14,8 @@ log = logging.getLogger("price-tracker")
 
 STALE_AFTER = 900  # seconds
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "60"))
+# POST /refresh returns the stored price when it is younger than this (seconds).
+REFRESH_MIN_INTERVAL = int(os.getenv("REFRESH_MIN_INTERVAL", "10"))
 
 
 def refresh_asset(asset: str) -> dict:
@@ -27,6 +29,16 @@ def refresh_asset(asset: str) -> dict:
              r["confidence"], int(r.get("estimated", False))),
         )
     return r
+
+
+def _latest_row(asset: str):
+    with db.get_conn() as c:
+        return c.execute(
+            "SELECT price, sources_ok, groups_ok, confidence, estimated, "
+            "CAST(strftime('%s','now') - strftime('%s', created_at) AS INTEGER) AS age_seconds "
+            "FROM prices WHERE asset=? ORDER BY id DESC LIMIT 1",
+            (asset,),
+        ).fetchone()
 
 
 async def poll_forever():
@@ -61,13 +73,27 @@ def health():
 
 @app.post("/prices/{asset}/refresh")
 def refresh(asset: str):
+    if asset not in fetcher.SUPPORTED:
+        raise HTTPException(status_code=404, detail="unknown asset")
+    row = _latest_row(asset)
+    if row is not None and row["age_seconds"] < REFRESH_MIN_INTERVAL:
+        return {
+            "asset": asset,
+            "price": row["price"],
+            "sources_ok": row["sources_ok"],
+            "groups_ok": row["groups_ok"],
+            "confidence": row["confidence"],
+            "estimated": bool(row["estimated"]),
+            "cached": True,
+            "age_seconds": row["age_seconds"],
+        }
     try:
         r = refresh_asset(asset)
     except ValueError:
         raise HTTPException(status_code=404, detail="unknown asset")
     except RuntimeError:
         raise HTTPException(status_code=503, detail="no source available")
-    return {"asset": asset, **r}
+    return {"asset": asset, **r, "cached": False}
 
 
 @app.get("/prices/{asset}/latest")
