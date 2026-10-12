@@ -1,0 +1,9 @@
+apiVersion: 1
+providers:
+  - name: price-tracker
+    folder: ""
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/dashboards
