@@ -1,8 +1,11 @@
 import os
+import threading
+import time
 
 from app.sources import FakeSource, HttpJsonSource, collect, gold18_gram
 
 SUPPORTED = ("usd", "gold")
+USD_CACHE_TTL = 20  # seconds: the gold estimate needs the USD price right after the USD fetch
 
 # USDT price in Iran is used as a proxy for the dollar. Nobitex returns rials.
 USD_SOURCES = [
@@ -34,10 +37,24 @@ OUNCE_SOURCES = [
 ]
 
 _ORDER = {"low": 0, "medium": 1, "high": 2}
+_usd_cache = {"ts": 0.0, "value": None}
+_usd_lock = threading.Lock()
+
+
+def _usd_cached():
+    """USD result, reused for a few seconds so one poll round asks the source once."""
+    with _usd_lock:
+        fresh = time.time() - _usd_cache["ts"] < USD_CACHE_TTL
+        if _usd_cache["value"] is not None and fresh:
+            return _usd_cache["value"]
+        value = collect("usd", USD_SOURCES)
+        if value is not None:
+            _usd_cache.update(ts=time.time(), value=value)
+        return value
 
 
 def _gold_estimate():
-    usd = collect("usd", USD_SOURCES)
+    usd = _usd_cached()
     ounce = collect("xau", OUNCE_SOURCES)
     if usd is None or ounce is None:
         return None
@@ -57,7 +74,7 @@ def fetch_price(asset: str) -> dict:
     if os.getenv("USE_FAKE_SOURCES") == "1":  # tests must not hit the network
         result = collect(asset, [FakeSource()])
     elif asset == "usd":
-        result = collect("usd", USD_SOURCES)
+        result = _usd_cached()
     else:
         result = _gold_estimate()
     if result is None:
