@@ -47,7 +47,7 @@ async def poll_forever():
             try:
                 r = await asyncio.to_thread(refresh_asset, asset)
                 log.info("poll %s ok: %s (%s)", asset, r["price"], r["confidence"])
-            except Exception as e:  # one failure must not stop the loop
+            except Exception as e:  # noqa: BLE001  # one failure must not stop the loop
                 log.warning("poll %s failed: %s", asset, e)
         await asyncio.sleep(POLL_INTERVAL)
 

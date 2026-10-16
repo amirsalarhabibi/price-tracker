@@ -57,7 +57,7 @@ class TrackerCollector:
                     "CAST(strftime('%s','now') - strftime('%s', created_at) AS INTEGER) AS age "
                     "FROM prices WHERE id IN (SELECT MAX(id) FROM prices GROUP BY asset)"
                 ).fetchall()
-        except Exception:
+        except Exception:  # noqa: BLE001
             rows = []
         for r in rows:
             price.add_metric([r["asset"]], r["price"])
