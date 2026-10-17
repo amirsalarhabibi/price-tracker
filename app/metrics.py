@@ -41,6 +41,22 @@ class TrackerCollector:
         yield attempts
         yield failures
 
+        circuit = GaugeMetricFamily(
+            "price_tracker_source_circuit_open",
+            "1 if the circuit breaker is open (source quarantined)",
+            labels=["source"],
+        )
+        outliers = CounterMetricFamily(
+            "price_tracker_source_outliers",
+            "Times this source was dropped for being far from the other sources",
+            labels=["source"],
+        )
+        for name, s in snap.items():
+            circuit.add_metric([name], 1 if s.get("circuit") == "open" else 0)
+            outliers.add_metric([name], s.get("outliers", 0))
+        yield circuit
+        yield outliers
+
         price = GaugeMetricFamily(
             "price_tracker_price", "Latest stored price (toman)", labels=["asset"]
         )
