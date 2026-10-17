@@ -5,8 +5,10 @@ import time
 from app.sources import FakeSource, HttpJsonSource, collect, gold18_gram
 
 SUPPORTED = ("usd", "gold")
-USD_CACHE_TTL = 20
+USD_CACHE_TTL = 20  # seconds: the gold estimate needs the USD price right after the USD fetch
 
+# USDT price in Iran is used as a proxy for the dollar.
+# Nobitex returns rials, so its scale is 0.1 (rial -> toman).
 USD_SOURCES = [
     HttpJsonSource(
         name="nobitex-usdt",
@@ -46,6 +48,7 @@ USD_SOURCES = [
     ),
 ]
 
+# World gold ounce in USD. Both seem to share one upstream, so they share one group.
 OUNCE_SOURCES = [
     HttpJsonSource(
         "gold-api",

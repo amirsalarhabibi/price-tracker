@@ -44,4 +44,5 @@ def test_latest_has_new_fields():
 def test_history_estimated_is_bool():
     with TestClient(app) as client:
         client.post("/prices/gold/refresh")
-        client.get("/prices/gold/history").json()
+        rows = client.get("/prices/gold/history").json()
+        assert isinstance(rows[0]["estimated"], bool)

@@ -109,7 +109,7 @@ def reset_stats():
 
 class Source:
     name = "base"
-    group = None
+    group = None  # sources fed by the same upstream share a group
 
     def group_id(self) -> str:
         return self.group or self.name
@@ -192,4 +192,6 @@ def collect(asset: str, sources: list):
 
 
 def gold18_gram(ounce_usd: float, usd_price: float) -> float:
+    """Estimate 18k gold per gram from the world ounce price and the USD price.
+    It is an estimate: it has no local market premium."""
     return ounce_usd / 31.1035 * 0.75 * usd_price
