@@ -15,6 +15,11 @@ class TrackerCollector:
         up = GaugeMetricFamily(
             "price_tracker_source_up", "1 if the last attempt on this source worked", labels=["source"]
         )
+        circuit_open = GaugeMetricFamily(
+            "price_tracker_source_circuit_open",
+            "1 if the circuit breaker has quarantined this source",
+            labels=["source"],
+        )
         last_ok = GaugeMetricFamily(
             "price_tracker_source_last_success_timestamp_seconds",
             "Unix time of the last successful fetch",
@@ -28,33 +33,26 @@ class TrackerCollector:
             "Failed fetches per source and error type",
             labels=["source", "error"],
         )
+        outliers = CounterMetricFamily(
+            "price_tracker_source_outliers",
+            "Outlier prices rejected per source",
+            labels=["source"],
+        )
         for name, s in snap.items():
             if s["up"] is not None:
                 up.add_metric([name], 1 if s["up"] else 0)
+            circuit_open.add_metric([name], 1 if s.get("circuit") == "open" else 0)
             if s["last_success_ts"] is not None:
                 last_ok.add_metric([name], s["last_success_ts"])
             attempts.add_metric([name], s["attempts"])
+            outliers.add_metric([name], s.get("outliers", 0))
             for err, n in s["failures"].items():
                 failures.add_metric([name, err], n)
         yield up
+        yield circuit_open
         yield last_ok
         yield attempts
         yield failures
-
-        circuit = GaugeMetricFamily(
-            "price_tracker_source_circuit_open",
-            "1 if the circuit breaker is open (source quarantined)",
-            labels=["source"],
-        )
-        outliers = CounterMetricFamily(
-            "price_tracker_source_outliers",
-            "Times this source was dropped for being far from the other sources",
-            labels=["source"],
-        )
-        for name, s in snap.items():
-            circuit.add_metric([name], 1 if s.get("circuit") == "open" else 0)
-            outliers.add_metric([name], s.get("outliers", 0))
-        yield circuit
         yield outliers
 
         price = GaugeMetricFamily(

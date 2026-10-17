@@ -5,10 +5,8 @@ import time
 from app.sources import FakeSource, HttpJsonSource, collect, gold18_gram
 
 SUPPORTED = ("usd", "gold")
-USD_CACHE_TTL = 20  # seconds: the gold estimate needs the USD price right after the USD fetch
+USD_CACHE_TTL = 20
 
-# USDT price in Iran is used as a proxy for the dollar.
-# Nobitex returns rials, so its scale is 0.1 (rial -> toman).
 USD_SOURCES = [
     HttpJsonSource(
         name="nobitex-usdt",
@@ -48,7 +46,6 @@ USD_SOURCES = [
     ),
 ]
 
-# World gold ounce in USD. Both seem to share one upstream, so they share one group.
 OUNCE_SOURCES = [
     HttpJsonSource(
         "gold-api",
@@ -59,6 +56,37 @@ OUNCE_SOURCES = [
         "xaus",
         {"xau": ("https://xaus.com/api/v1/spot", ["spot_usd_oz"])},
         group="gold-api",
+    ),
+    HttpJsonSource(
+        "kucoin-paxg",
+        {
+            "xau": (
+                "https://api.kucoin.com/api/v1/market/orderbook/level1?symbol=PAXG-USDT",
+                ["data", "price"],
+            )
+        },
+        group="kucoin",
+    ),
+    HttpJsonSource(
+        "kraken-paxg",
+        {
+            "xau": (
+                "https://api.kraken.com/0/public/Ticker?pair=PAXGUSD",
+                ["result", "PAXGUSD", "c", 0],
+            )
+        },
+        group="kraken",
+    ),
+    HttpJsonSource(
+        "nobitex-paxg",
+        {
+            "xau": (
+                "https://apiv2.nobitex.ir/market/stats?srcCurrency=paxg&dstCurrency=usdt",
+                ["stats", "paxg-usdt", "latest"],
+            )
+        },
+        group="nobitex-gold",
+        user_agent="TraderBot/PriceTracker-1.0",
     ),
 ]
 

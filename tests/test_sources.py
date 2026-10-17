@@ -55,3 +55,25 @@ def test_same_group_counts_once():
     assert r["sources_ok"] == 2
     assert r["groups_ok"] == 1
     assert r["confidence"] == "low"
+
+
+def test_circuit_breaker_quarantines_failing_source():
+    from app.sources import reset_stats, snapshot
+
+    reset_stats()
+    calls = 0
+
+    class FlakySource(Source):
+        name = "flaky-cb"
+
+        def fetch(self, asset: str) -> float:
+            nonlocal calls
+            calls += 1
+            raise TimeoutError("simulated timeout")
+
+    src = FlakySource()
+    for _ in range(5):
+        collect("usd", [src])
+
+    assert calls == 3
+    assert snapshot()["flaky-cb"]["circuit"] == "open"

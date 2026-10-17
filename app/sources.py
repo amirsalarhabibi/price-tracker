@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 TIMEOUT = float(os.getenv("SOURCE_TIMEOUT", "5"))
 CB_FAIL_THRESHOLD = int(os.getenv("CB_FAIL_THRESHOLD", "3"))
 CB_COOLDOWN_SEC = float(os.getenv("CB_COOLDOWN_SEC", "60"))
-OUTLIER_PCT = float(os.getenv("OUTLIER_PCT", "5"))
+OUTLIER_THRESHOLD = float(os.getenv("OUTLIER_THRESHOLD", "0.10"))  # 10% deviation from median
 
 _lock = threading.Lock()
 _stats = {}
@@ -51,6 +51,7 @@ def _entry(source):
             "group": source.group_id(),
             "attempts": 0,
             "failures": {},
+            "outliers": 0,
             "up": None,
             "last_success_ts": None,
             "last_error": None,
@@ -84,6 +85,12 @@ def record_success(source):
         e["cooldown_until"] = None
 
 
+def record_outlier(source):
+    with _lock:
+        e = _entry(source)
+        e["outliers"] = e.get("outliers", 0) + 1
+
+
 def record_failure(source, exc: Exception):
     kind = classify_error(exc)
     with _lock:
@@ -110,7 +117,7 @@ def reset_stats():
 
 class Source:
     name = "base"
-    group = None  # sources fed by the same upstream share a group
+    group = None
 
     def group_id(self) -> str:
         return self.group or self.name
@@ -121,7 +128,11 @@ class Source:
 
 class FakeSource(Source):
     name = "fake"
-    BASE: typing.ClassVar[dict[str, float]] = {"usd": 60000, "gold": 3000000, "xau": 4000}
+    BASE: typing.ClassVar[dict[str, float]] = {
+        "usd": 60000,
+        "gold": 3000000,
+        "xau": 4000,
+    }
 
     def fetch(self, asset: str) -> float:
         return self.BASE[asset] * random.uniform(0.98, 1.02)
@@ -156,23 +167,8 @@ def confidence_for(groups_ok: int) -> str:
     return "low"
 
 
-def record_outlier(source):
-    with _lock:
-        e = _entry(source)
-        e["outliers"] = e.get("outliers", 0) + 1
-
-
-def _spread_pct(a: float, b: float) -> float:
-    return abs(a - b) / ((a + b) / 2) * 100
-
-
 def collect(asset: str, sources: list):
-    """Ask every source in parallel with Circuit Breaker protection.
-
-    Median inside each group first, then median across groups, so several
-    sources sharing one upstream count as one vote. With three or more groups,
-    a group far from the median of all groups is dropped as an outlier.
-    """
+    """Ask every source in parallel with Circuit Breaker and group-level Outlier filtering."""
 
     def one(source):
         if is_circuit_open(source):
@@ -190,42 +186,51 @@ def collect(asset: str, sources: list):
     with ThreadPoolExecutor(max_workers=len(sources)) as pool:
         results = list(pool.map(one, sources))
 
-    by_group = {}  # group id -> [(source, price), ...]
+    by_group = {}
+    sources_by_group = {}
     for source, price in zip(sources, results):
         if price is not None:
-            by_group.setdefault(source.group_id(), []).append((source, price))
+            gid = source.group_id()
+            by_group.setdefault(gid, []).append(price)
+            sources_by_group.setdefault(gid, []).append(source)
     if not by_group:
         return None
 
-    group_price = {g: statistics.median(p for _, p in v) for g, v in by_group.items()}
-    outliers = 0
-    if len(group_price) >= 3:
-        mid = statistics.median(group_price.values())
-        for g in list(group_price):
-            if abs(group_price[g] - mid) / mid * 100 > OUTLIER_PCT:
-                for source, _ in by_group[g]:
-                    record_outlier(source)
-                del group_price[g]
-                del by_group[g]
-                outliers += 1
+    group_medians = {gid: statistics.median(vals) for gid, vals in by_group.items()}
+    outliers_count = 0
+    disagree = False
 
-    confidence = confidence_for(len(group_price))
-    if len(group_price) == 2:
-        a, b = group_price.values()
-        if _spread_pct(a, b) > OUTLIER_PCT:
-            confidence = "low"  # two sources that disagree: we cannot tell which is right
+    if len(group_medians) >= 3:
+        overall_med = statistics.median(group_medians.values())
+        kept_groups = {}
+        for gid, gprice in group_medians.items():
+            if abs(gprice - overall_med) / overall_med > OUTLIER_THRESHOLD:
+                outliers_count += 1
+                for src in sources_by_group[gid]:
+                    record_outlier(src)
+            else:
+                kept_groups[gid] = by_group[gid]
+        if kept_groups:
+            by_group = kept_groups
+            group_medians = {gid: statistics.median(vals) for gid, vals in by_group.items()}
+    elif len(group_medians) == 2:
+        vals = list(group_medians.values())
+        med = statistics.median(vals)
+        if any(abs(v - med) / med > OUTLIER_THRESHOLD for v in vals):
+            disagree = True
+
+    group_prices = list(group_medians.values())
+    conf = "low" if disagree else confidence_for(len(by_group))
 
     return {
-        "price": round(statistics.median(group_price.values()), 2),
+        "price": round(statistics.median(group_prices), 2),
         "sources_ok": sum(len(v) for v in by_group.values()),
         "sources_total": len(sources),
-        "groups_ok": len(group_price),
-        "confidence": confidence,
-        "outliers": outliers,
+        "groups_ok": len(by_group),
+        "outliers": outliers_count,
+        "confidence": conf,
     }
 
 
 def gold18_gram(ounce_usd: float, usd_price: float) -> float:
-    """Estimate 18k gold per gram from the world ounce price and the USD price.
-    It is an estimate: it has no local market premium."""
     return ounce_usd / 31.1035 * 0.75 * usd_price
