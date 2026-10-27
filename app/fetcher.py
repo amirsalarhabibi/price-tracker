@@ -5,9 +5,8 @@ import time
 from app.sources import FakeSource, HttpJsonSource, collect, gold18_gram
 
 SUPPORTED = ("usd", "gold")
-USD_CACHE_TTL = 20  # seconds: the gold estimate needs the USD price right after the USD fetch
+USD_CACHE_TTL = 20
 
-# USDT price in Iran is used as a proxy for the dollar. Nobitex returns rials.
 USD_SOURCES = [
     HttpJsonSource(
         name="nobitex-usdt",
@@ -17,12 +16,36 @@ USD_SOURCES = [
                 ["stats", "usdt-rls", "latest"],
             )
         },
-        scale=0.1,  # rial -> toman
+        scale=0.1,
+        group="nobitex",
+        user_agent="TraderBot/PriceTracker-1.0",
+    ),
+    HttpJsonSource(
+        name="tetherland-usdt",
+        config={
+            "usd": (
+                "https://api.tetherland.com/currencies",
+                ["data", "currencies", "USDT", "price"],
+            )
+        },
+        scale=1.0,
+        group="tetherland",
+        user_agent="TraderBot/PriceTracker-1.0",
+    ),
+    HttpJsonSource(
+        name="wallex-usdt",
+        config={
+            "usd": (
+                "https://api.wallex.ir/v1/markets",
+                ["result", "symbols", "USDTTMN", "stats", "lastPrice"],
+            )
+        },
+        scale=1.0,
+        group="wallex",
         user_agent="TraderBot/PriceTracker-1.0",
     ),
 ]
 
-# World gold ounce in USD. Both seem to share one upstream, so one group.
 OUNCE_SOURCES = [
     HttpJsonSource(
         "gold-api",
@@ -34,6 +57,37 @@ OUNCE_SOURCES = [
         {"xau": ("https://xaus.com/api/v1/spot", ["spot_usd_oz"])},
         group="gold-api",
     ),
+    HttpJsonSource(
+        "kucoin-paxg",
+        {
+            "xau": (
+                "https://api.kucoin.com/api/v1/market/orderbook/level1?symbol=PAXG-USDT",
+                ["data", "price"],
+            )
+        },
+        group="kucoin",
+    ),
+    HttpJsonSource(
+        "kraken-paxg",
+        {
+            "xau": (
+                "https://api.kraken.com/0/public/Ticker?pair=PAXGUSD",
+                ["result", "PAXGUSD", "c", 0],
+            )
+        },
+        group="kraken",
+    ),
+    HttpJsonSource(
+        "nobitex-paxg",
+        {
+            "xau": (
+                "https://apiv2.nobitex.ir/market/stats?srcCurrency=paxg&dstCurrency=usdt",
+                ["stats", "paxg-usdt", "latest"],
+            )
+        },
+        group="nobitex-gold",
+        user_agent="TraderBot/PriceTracker-1.0",
+    ),
 ]
 
 _ORDER = {"low": 0, "medium": 1, "high": 2}
@@ -42,7 +96,6 @@ _usd_lock = threading.Lock()
 
 
 def _usd_cached():
-    """USD result, reused for a few seconds so one poll round asks the source once."""
     with _usd_lock:
         fresh = time.time() - _usd_cache["ts"] < USD_CACHE_TTL
         if _usd_cache["value"] is not None and fresh:
@@ -71,7 +124,7 @@ def _gold_estimate():
 def fetch_price(asset: str) -> dict:
     if asset not in SUPPORTED:
         raise ValueError(f"unknown asset: {asset}")
-    if os.getenv("USE_FAKE_SOURCES") == "1":  # tests must not hit the network
+    if os.getenv("USE_FAKE_SOURCES") == "1":
         result = collect(asset, [FakeSource()])
     elif asset == "usd":
         result = _usd_cached()
